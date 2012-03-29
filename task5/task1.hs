@@ -13,6 +13,9 @@
 
 import Data.List(find)
 
+-- Для решения данной задачи будем перебирать все возможные корректные выражения
+-- в обратной польской нотации с 10 операндами
+
 -- Оператор
 data Operator = Plus | Minus | Mult deriving (Eq, Show)
 -- Элемент обратной польской записи - оператор или операнд
@@ -36,10 +39,10 @@ generateRpns :: Integer -> [[RpnItem]]
 -- 3) подставляем каждую возможную последовательность операторов из пункта 2 на
 --    соответствующие позиции операторов + в пункте 1.
 generateRpns n
-  = emplaceAllOperators n $ map fst $ filterCorrect $ genPartialRpns n
+  = emplaceAllOperators n $ map (reverse . fst) $ filterCorrect $ genPartialRpns n
     where
     -- Генерирует все посл-ти с n операндами и <= n-1 операторами Plus.
-    -- Сгенерированные последовательности получаются в обратном порядке.
+    -- Сгенерированные последовательности получаются ``перевёрнутыми``.
     -- Возвращает список Tuple'ов вида:
     --    (посл-ть, сколько операторов надо добавить чтобы получилась корреткная запись
     --     в ОПН)
@@ -70,10 +73,10 @@ generateRpns n
         allOperItems = map OperatorItem [Plus, Minus, Mult]
     -- Принимает на вход корректную ОПН и список из операторов и на место
     -- каждого оператора в ОПН вставляет соотв-ий оператор из второго списка
-    replaceOpers items opers = fst $ foldl changeOp ([], opers) items
+    replaceOpers items opers = fst $ foldr changeOp ([], opers) items
         where
-        changeOp (res, opers) x@(OperandItem _) = (x:res, opers)
-        changeOp (res, op:ops) x@(OperatorItem _) = (op:res, ops)
+        changeOp x@(OperandItem _) (res, opers) = (x:res, opers)
+        changeOp x@(OperatorItem _) (res, op:ops) = (op:res, ops)
     -- Принимает на вход число операндов, список корректных ОПН с таким количеством
     -- операндов выдаёт все возможные комбинации принятых ОПН с другими операторами.
     emplaceAllOperators n items
@@ -148,7 +151,20 @@ exprFor n = sayResult $ find (\(x,_) -> x == n) $ evalPrintPairs
     sayResult (Just (_, printedRpn)) = printedRpn
     sayResult Nothing = "impossible"
 
-main = do
-  print $ exprFor $ product [1..10]
-  print $ exprFor $ 1 + product[1..10]
+-- Правильность тестов проверялась вручную, подстановкой выдаваемых выражений в
+-- http://wolframalpha.com/
+--
+-- Для всех тестов кроме последнего найдётся способ записать переданное число.
+-- Последний тест переберёт все варианты и не найдёт записи, потому что число которое
+-- туда вписано слишком большое для того чтобы получить его описанным способом.
+--
+-- NB! В интерпретаторе у меня работает примерно в 20 раз медленнее, чем
+-- скомпилированная версия
+test = [
+    exprFor 2011,
+    exprFor 2012,
+    exprFor 0,
+    exprFor (2 + product [1..10]) -- 10! + 2
+  ]
 
+main = print test

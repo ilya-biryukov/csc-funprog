@@ -11,6 +11,8 @@
  - (конечно, в этой записи некоторые скобки - лишние).
  -}
 
+import Data.List(find)
+
 -- Оператор
 data Operator = Plus | Minus | Mult deriving (Eq, Show)
 -- Элемент обратной польской записи - оператор или операнд
@@ -22,7 +24,7 @@ data RpnItem = OperatorItem Operator | OperandItem Integer deriving (Eq, Show)
  -  Plus, Minus, Mult.
  -
  -  Аргументы:
- -    n - количество операндов в обратной польской записи
+ -    n Количество операндов в обратной польской записи
  -
  -  Возвращает:
  -    Список из всех возможных выражений в обратной польской записи, в которых
@@ -33,7 +35,8 @@ generateRpns :: Integer -> [[RpnItem]]
 -- 2) генерируем все возможные последовательности из (n - 1) операторов
 -- 3) подставляем каждую возможную последовательность операторов из пункта 2 на
 --    соответствующие позиции операторов + в пункте 1.
-generateRpns n = map (reverse . fst) $ filter (\(_, y) -> y == 0) (genPartialRpns n)
+generateRpns n
+  = emplaceAllOperators n $ map fst $ filterCorrect $ genPartialRpns n
     where
     -- Генерирует все посл-ти с n операндами и <= n-1 операторами Plus.
     -- Сгенерированные последовательности получаются в обратном порядке.
@@ -45,6 +48,9 @@ generateRpns n = map (reverse . fst) $ filter (\(_, y) -> y == 0) (genPartialRpn
         where
         prevRpns = genPartialRpns (n - 1)
         addItem (list, count) = (OperandItem n:list, count + 1)
+    -- Отфильтровывает те пары, в которых содержатся некорректные ОПН, в которых не
+    -- хватает операторов
+    filterCorrect = filter (\(_, y) -> y == 0)
     -- Добавляет к списку пар (посл-ть, сколько операторов надо добавить) всевозможные
     -- пары, которые можно получить корректным добавлением дополнительных операторов
     -- (чтобы ``сколько надо добавить`` оставалось >= 0)
@@ -62,6 +68,87 @@ generateRpns n = map (reverse . fst) $ filter (\(_, y) -> y == 0) (genPartialRpn
         prevLists = makeOpersList (n - 1)
         makeOpersList' res list = map (:list) allOperItems ++ res
         allOperItems = map OperatorItem [Plus, Minus, Mult]
-    -- Принимает на вход последовательности в ОПН, у которых все операторы нули и сп
+    -- Принимает на вход корректную ОПН и список из операторов и на место
+    -- каждого оператора в ОПН вставляет соотв-ий оператор из второго списка
+    replaceOpers items opers = fst $ foldl changeOp ([], opers) items
+        where
+        changeOp (res, opers) x@(OperandItem _) = (x:res, opers)
+        changeOp (res, op:ops) x@(OperatorItem _) = (op:res, ops)
+    -- Принимает на вход число операндов, список корректных ОПН с таким количеством
+    -- операндов выдаёт все возможные комбинации принятых ОПН с другими операторами.
+    emplaceAllOperators n items
+      = [replaceOpers x y | x <- items, y <- makeOpersList (n - 1)];
 
+{--
+ -  Вычисляет значение выражения, записанного в обратной польской нотации.
+ -
+ -  Аргументы:
+ -      items Последовательность в ОПН
+ -
+ -  Возвращает:
+ -      Результат вычисления переданного выражения
+ -}
+evalRpn :: [RpnItem] -> Integer
+evalRpn items = head $ foldl evalItem [] $ items
+    where
+    -- Принимает список, в котором хранится текущее состояние стека операндов
+    -- и следующее значение в цепочке выражения.
+    evalItem ops (OperandItem value) = value:ops
+    -- NB! операторы вынимаются из стэка в обратном порядке!
+    evalItem (x:y:ops) (OperatorItem operator) = (applyOper operator y x):ops
+    -- Принимает оператор, левый аргумент, правый аргумент.
+    -- Возвращает результат применения соответствующего оператора
+    applyOper Plus x y = x + y
+    applyOper Minus x y = x - y
+    applyOper Mult x y = x * y
+
+{--
+ -  Преобразует выражением в ОПН в строку, представляющую собой инфиксную запись
+ -  такого выражения с соответствующими скобками.
+ -
+ -  Аргументы:
+ -      items Последовательность в ОПН
+ -
+ -  Возвращает:
+ -      Строку, представляющую запись ОПН в инфиксной форме.
+ -}
+
+printRpn :: [RpnItem] -> String
+printRpn [] = ""
+printRpn items = head $ foldl printItem [] $ items
+    where
+    -- Принимает список, в котором хранится текущее состояние стека операндов
+    -- и следующее значение в цепочке выражения.
+    printItem ops (OperandItem value) = (show value):ops
+    -- NB! операторы вынимаются из стэка в обратном порядке!
+    printItem (x:y:ops) (OperatorItem operator) = ("(" ++ y ++ opStr ++ x ++ ")"):ops
+        where
+        opStr = case operator of
+          Plus -> "+"
+          Minus -> "-"
+          Mult -> "*"
+
+{--
+ -  Если данное число можно получить способом, описанным в задании выдаёт
+ -  соответствующее выражение, иначе "impossible".
+ -
+ -  Аргументы:
+ -      n Число, которое необходимо получить
+ -
+ -  Возвращает:
+ -      Строку, содержащую выражение, равное n или "impossible", если способом,
+ -      описанным в задании такое число получить невозможно
+ -}
+exprFor :: Integer -> String
+-- Будем вычислять все возможные выражения пока не получим нужное число. Если ничего не
+-- вышло, выдадим impossible
+exprFor n = sayResult $ find (\(x,_) -> x == n) $ evalPrintPairs
+    where
+    evalPrintPairs = map (\rpn -> (evalRpn rpn, printRpn rpn)) $ generateRpns 10
+    sayResult (Just (_, printedRpn)) = printedRpn
+    sayResult Nothing = "impossible"
+
+main = do
+  print $ exprFor $ product [1..10]
+  print $ exprFor $ 1 + product[1..10]
 
